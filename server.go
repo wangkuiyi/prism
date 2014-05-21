@@ -125,7 +125,6 @@ func (p *Prism) Deploy(d *Program, _ *int) error {
 			return fmt.Errorf("Failed copying %s to %s: %v", remoteFile, localFile, e)
 		}
 	}
-
 	return nil
 }
 
@@ -144,6 +143,8 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 	}
 
 	exe := path.Join(strings.TrimPrefix(cmd.LocalDir, file.LocalPrefix), cmd.Filename)
+	os.Chmod(exe, 0774)
+
 	logfile := path.Join(strings.TrimPrefix(cmd.LogBase, file.LocalPrefix), cmd.Filename)
 	c := exec.Command(exe, cmd.Args...)
 	fout, e1 := os.Create(logfile + ".out")

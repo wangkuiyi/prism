@@ -37,7 +37,7 @@ func main() {
 	}
 	log.Println("Done")
 
-	if e := c.Call("Prism.DeployAnd", &prism.ProgramAndCmd{
+	if e := c.Call("Prism.DeployAndLaunch", &prism.ProgramAndCmd{
 		RemoteDir: "hdfs:/hello",
 		LocalDir:  "file:/tmp",
 		Filename:  "hello",
