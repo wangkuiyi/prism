@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"github.com/wangkuiyi/file"
 	"github.com/wangkuiyi/prism"
 	"log"
 	"net"
@@ -14,12 +15,17 @@ var (
 )
 
 func main() {
+	flag.Parse()
+	if e := file.Initialize(); e != nil {
+		log.Fatalf("file.Initalize() :%v", e)
+	}
+
 	s := new(prism.Prism)
 	rpc.Register(s)
 	rpc.HandleHTTP()
 	l, e := net.Listen("tcp", *addrFlag)
 	if e != nil {
-		log.Fatalf("Cannot listen on %s:", *addrFlag, e)
+		log.Fatalf("Cannot listen on %s: %v", *addrFlag, e)
 	}
 	log.Printf("Listening on %s", *addrFlag)
 	http.Serve(l, nil)
