@@ -18,13 +18,10 @@ import (
 
 type Prism struct{}
 
-// Deploy specifies to deploy Filename from RemoteDir to LocalDir.
+// Program specifies to deploy Filename from RemoteDir to LocalDir.
 // Both RemoteDir and LocalDir must have filesystem prefixes like
-// "hdfs:" or "file:".  When used with RPC DeployFile, Filename must
-// not be nil or empty, and DeployFile will copy RemoteDir/Filename to
-// LocalDir/Filename.  When used with RPC DeployDir, Filename is
-// ignored, and all files in RemoteDir are copied to LocalDir.
-type Deploy struct {
+// "hdfs:" or "file:".
+type Program struct {
 	RemoteDir, LocalDir, Filename string
 }
 
@@ -40,14 +37,17 @@ type Cmd struct {
 	Retry              int
 }
 
-type DeployAndCmd struct {
+type ProgramAndCmd struct {
 	RemoteDir, LocalDir, Filename string
 	Args                          []string
 	LogBase                       string
 	Retry                         int
 }
 
-func (p *Prism) DeployFile(d *Deploy, _ *int) error {
+func (p *Prism) Deploy(d *Program, _ *int) error {
+	// TODO(wyi): Currently, Deploy deploy a single executable file.
+	// In the future, we should make it copying all files in RemoteDir
+	// to LocalDir if Filename is nil or empty.
 	remoteFile := path.Join(d.RemoteDir, d.Filename)
 	localFile := path.Join(d.LocalDir, d.Filename)
 	tempFile := fmt.Sprintf("%s.%d-%d",
@@ -171,11 +171,13 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 	return nil
 }
 
-func (p *Prism) DeployAndLaunchFile(i *DeployAndCmd, _ *int) error {
-	if e := p.DeployFile(&Deploy{i.RemoteDir, i.LocalDir, i.Filename}, nil); e != nil {
+func (p *Prism) DeployAndLaunch(i *ProgramAndCmd, _ *int) error {
+	e := p.Deploy(&Program{i.RemoteDir, i.LocalDir, i.Filename}, nil)
+	if e != nil {
 		return e
 	}
-	if e := p.Launch(&Cmd{i.LocalDir, i.Filename, i.Args, i.LogBase, i.Retry}, nil); e != nil {
+	e = p.Launch(&Cmd{i.LocalDir, i.Filename, i.Args, i.LogBase, i.Retry}, nil)
+	if e != nil {
 		return e
 	}
 	return nil
