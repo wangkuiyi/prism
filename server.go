@@ -159,7 +159,7 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 		for i := 0; i < cmd.Retry; i++ {
 			log.Printf("Start process %v", cmd)
 			if e := c.Run(); e != nil {
-				log.Printf("Restart process %v: %v", cmd, e)
+				log.Printf("%v failed: %v", cmd, e)
 			} else {
 				log.Printf("%v successfully finished.", cmd)
 				break
