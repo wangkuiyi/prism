@@ -3,12 +3,15 @@ package prism
 import (
 	"bytes"
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"github.com/wangkuiyi/file"
 	"github.com/wangkuiyi/parallel"
 	"io"
+	"log"
 	"math/rand"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 )
@@ -17,13 +20,27 @@ type Prism struct{}
 
 // Deployment specifies to deploy Filename from RemoteDir to LocalDir.
 // Both RemoteDir and LocalDir must have filesystem prefixes like
-// "hdfs:" or "file:".
+// "hdfs:" or "file:".  When used with RPC DeployFile, Filename must
+// not be nil or empty, and DeployFile will copy RemoteDir/Filename to
+// LocalDir/Filename.  When used with RPC DeployDir, Filename is
+// ignored, and all files in RemoteDir are copied to LocalDir.
 type Deployment struct {
 	RemoteDir, LocalDir, Filename string
 }
 
-//------------------------------------------------------------------------------
-func (p *Prism) Launch(d *Deployment, _ *int) error {
+// Command specifies the command as well as Args and LogBase that are
+// used to start a local process.  LocalDir/Filename must exists.
+// LogBase is a local directory which hold log files whose content
+// include the standard outputs and error of the launched process.
+// Command is supposed to be used with RPC Launch.
+type Command struct {
+	LocalDir, Filename string
+	Args               []string
+	LogBase            string
+	Retry              int
+}
+
+func (p *Prism) DeployFile(d *Deployment, _ *int) error {
 	remoteFile := path.Join(d.RemoteDir, d.Filename)
 	localFile := path.Join(d.LocalDir, d.Filename)
 	tempFile := fmt.Sprintf("%s.%d-%d",
@@ -105,32 +122,44 @@ func (p *Prism) Launch(d *Deployment, _ *int) error {
 	return nil
 }
 
-// func aggregateErrors(es ...error) error {
-// 	r := ""
-// 	for _, e := range es {
-// 		if e != nil {
-// 			r += fmt.Sprintf("%v\n", e)
-// 		}
-// 	}
-// 	if r != "" {
-// 		return errors.New(r)
-// 	}
-// 	return nil
-// }
+func (p *Prism) Launch(cmd *Command, _ *int) error {
+	aggregateErrors := func(es ...error) error {
+		r := ""
+		for _, e := range es {
+			if e != nil {
+				r += fmt.Sprintf("%v\n", e)
+			}
+		}
+		if r != "" {
+			return errors.New(r)
+		}
+		return nil
+	}
 
-// func Run(host, cmd string, arg []string, logBase string) error {
-// 	c := exec.Command("ssh", append([]string{host, cmd}, arg...)...)
-// 	fout, e1 := os.Create(logBase + ".out")
-// 	ferr, e2 := os.Create(logBase + ".err")
-// 	cout, e3 := c.StdoutPipe()
-// 	cerr, e4 := c.StderrPipe()
-// 	if e := aggregateErrors(e1, e2, e3, e4); e != nil {
-// 		return e
-// 	}
-// 	go io.Copy(fout, cout)
-// 	go io.Copy(ferr, cerr)
-// 	if e := c.Run(); e != nil {
-// 		return fmt.Errorf("Failed execution of %s: %v", cmd, e)
-// 	}
-// 	return nil
-// }
+	exe := path.Join(strings.TrimPrefix(cmd.LocalDir, file.LocalPrefix), cmd.Filename)
+	logfile := path.Join(strings.TrimPrefix(cmd.LogBase, file.LocalPrefix), cmd.Filename)
+	c := exec.Command(exe, cmd.Args...)
+	fout, e1 := os.Create(logfile + ".out")
+	ferr, e2 := os.Create(logfile + ".err")
+	cout, e3 := c.StdoutPipe()
+	cerr, e4 := c.StderrPipe()
+	if e := aggregateErrors(e1, e2, e3, e4); e != nil {
+		return e
+	}
+	go io.Copy(fout, cout)
+	go io.Copy(ferr, cerr)
+	go func(c *exec.Cmd, cmd Command) {
+		for i := 0; i < cmd.Retry; i++ {
+			log.Printf("Start process %v", cmd)
+			if e := c.Run(); e != nil {
+				log.Printf("Restart process %v: %v", cmd, e)
+			} else {
+				log.Printf("%v successfully finished.", cmd)
+				break
+			}
+		}
+		log.Printf("No more restart of %v.", cmd)
+	}(c, *cmd)
+
+	return nil
+}
