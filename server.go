@@ -18,29 +18,36 @@ import (
 
 type Prism struct{}
 
-// Deployment specifies to deploy Filename from RemoteDir to LocalDir.
+// Deploy specifies to deploy Filename from RemoteDir to LocalDir.
 // Both RemoteDir and LocalDir must have filesystem prefixes like
 // "hdfs:" or "file:".  When used with RPC DeployFile, Filename must
 // not be nil or empty, and DeployFile will copy RemoteDir/Filename to
 // LocalDir/Filename.  When used with RPC DeployDir, Filename is
 // ignored, and all files in RemoteDir are copied to LocalDir.
-type Deployment struct {
+type Deploy struct {
 	RemoteDir, LocalDir, Filename string
 }
 
-// Command specifies the command as well as Args and LogBase that are
+// Cmd specifies the command as well as Args and LogBase that are
 // used to start a local process.  LocalDir/Filename must exists.
 // LogBase is a local directory which hold log files whose content
 // include the standard outputs and error of the launched process.
-// Command is supposed to be used with RPC Launch.
-type Command struct {
+// Cmd is supposed to be used with RPC Launch.
+type Cmd struct {
 	LocalDir, Filename string
 	Args               []string
 	LogBase            string
 	Retry              int
 }
 
-func (p *Prism) DeployFile(d *Deployment, _ *int) error {
+type DeployAndCmd struct {
+	RemoteDir, LocalDir, Filename string
+	Args                          []string
+	LogBase                       string
+	Retry                         int
+}
+
+func (p *Prism) DeployFile(d *Deploy, _ *int) error {
 	remoteFile := path.Join(d.RemoteDir, d.Filename)
 	localFile := path.Join(d.LocalDir, d.Filename)
 	tempFile := fmt.Sprintf("%s.%d-%d",
@@ -122,7 +129,7 @@ func (p *Prism) DeployFile(d *Deployment, _ *int) error {
 	return nil
 }
 
-func (p *Prism) Launch(cmd *Command, _ *int) error {
+func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 	aggregateErrors := func(es ...error) error {
 		r := ""
 		for _, e := range es {
@@ -148,7 +155,7 @@ func (p *Prism) Launch(cmd *Command, _ *int) error {
 	}
 	go io.Copy(fout, cout)
 	go io.Copy(ferr, cerr)
-	go func(c *exec.Cmd, cmd Command) {
+	go func(c *exec.Cmd, cmd Cmd) {
 		for i := 0; i < cmd.Retry; i++ {
 			log.Printf("Start process %v", cmd)
 			if e := c.Run(); e != nil {
@@ -161,5 +168,15 @@ func (p *Prism) Launch(cmd *Command, _ *int) error {
 		log.Printf("No more restart of %v.", cmd)
 	}(c, *cmd)
 
+	return nil
+}
+
+func (p *Prism) DeployAndLaunchFile(i *DeployAndCmd, _ *int) error {
+	if e := p.DeployFile(&Deploy{i.RemoteDir, i.LocalDir, i.Filename}, nil); e != nil {
+		return e
+	}
+	if e := p.Launch(&Cmd{i.LocalDir, i.Filename, i.Args, i.LogBase, i.Retry}, nil); e != nil {
+		return e
+	}
 	return nil
 }

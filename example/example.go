@@ -37,14 +37,13 @@ func main() {
 	}
 	log.Println("Done")
 
-	d := &prism.Deployment{"hdfs:/hello", "file:/tmp", "hello"}
-	log.Printf("Call Prism.DeployFile %+v", *d)
-	if e := c.Call("Prism.DeployFile", d, nil); e != nil {
-		log.Fatalf("Prism.DeployFile: %v", e)
-	}
-
-	m := &prism.Command{"file:/tmp", "hello", []string{}, "file:/tmp", 2}
-	if e := c.Call("Prism.Launch", m, nil); e != nil {
+	if e := c.Call("Prism.DeployAndLaunchFile", &prism.DeployAndCmd{
+		RemoteDir: "hdfs:/hello",
+		LocalDir:  "file:/tmp",
+		Filename:  "hello",
+		Args:      []string{},
+		LogBase:   "file:/tmp",
+		Retry:     2}, nil); e != nil {
 		log.Fatalf("Prism.Launch: %v", e)
 	}
 }
