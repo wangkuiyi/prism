@@ -51,16 +51,16 @@ func (p *Prism) Launch(d *Deployment, _ *int) error {
 		sumRemote := make([]byte, 0)
 		sumLocal := make([]byte, 0)
 		if e := parallel.Do(
-			func(sum []byte) error {
+			func() error {
 				h := md5.New()
 				if _, e := io.Copy(h, side); e != nil {
 					return fmt.Errorf("Error downloading %s or computing MD5: %v",
 						remoteFile, e)
 				}
-				sum = h.Sum(sum)
+				sumRemote = h.Sum(sumRemote)
 				return nil
-			}(sumRemote),
-			func(sum []byte) error {
+			},
+			func() error {
 				h := md5.New()
 				l, e := file.Open(localFile)
 				if e != nil {
@@ -70,9 +70,9 @@ func (p *Prism) Launch(d *Deployment, _ *int) error {
 				if _, e := io.Copy(h, l); e != nil {
 					return fmt.Errorf("Error computing MD5 of %s: %v", localFile, e)
 				}
-				sum = h.Sum(sum)
+				sumLocal = h.Sum(sumRemote)
 				return nil
-			}(sumLocal),
+			},
 		); e != nil {
 			return e
 		}
@@ -104,3 +104,33 @@ func (p *Prism) Launch(d *Deployment, _ *int) error {
 
 	return nil
 }
+
+// func aggregateErrors(es ...error) error {
+// 	r := ""
+// 	for _, e := range es {
+// 		if e != nil {
+// 			r += fmt.Sprintf("%v\n", e)
+// 		}
+// 	}
+// 	if r != "" {
+// 		return errors.New(r)
+// 	}
+// 	return nil
+// }
+
+// func Run(host, cmd string, arg []string, logBase string) error {
+// 	c := exec.Command("ssh", append([]string{host, cmd}, arg...)...)
+// 	fout, e1 := os.Create(logBase + ".out")
+// 	ferr, e2 := os.Create(logBase + ".err")
+// 	cout, e3 := c.StdoutPipe()
+// 	cerr, e4 := c.StderrPipe()
+// 	if e := aggregateErrors(e1, e2, e3, e4); e != nil {
+// 		return e
+// 	}
+// 	go io.Copy(fout, cout)
+// 	go io.Copy(ferr, cerr)
+// 	if e := c.Run(); e != nil {
+// 		return fmt.Errorf("Failed execution of %s: %v", cmd, e)
+// 	}
+// 	return nil
+// }
