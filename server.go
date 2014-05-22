@@ -13,10 +13,17 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"runtime"
 	"strings"
 )
 
-type Prism struct{}
+type Prism struct {
+	notifiers map[string]chan bool
+}
+
+func NewPrism() *Prism {
+	return &Prism{make(map[string]chan bool)}
+}
 
 // Program specifies to deploy Filename from RemoteDir to LocalDir.
 // Both RemoteDir and LocalDir must have filesystem prefixes like
@@ -31,17 +38,11 @@ type Program struct {
 // include the standard outputs and error of the launched process.
 // Cmd is supposed to be used with RPC Launch.
 type Cmd struct {
+	Addr               string
 	LocalDir, Filename string
 	Args               []string
 	LogBase            string
 	Retry              int
-}
-
-type ProgramAndCmd struct {
-	RemoteDir, LocalDir, Filename string
-	Args                          []string
-	LogBase                       string
-	Retry                         int
 }
 
 func (p *Prism) Deploy(d *Program, _ *int) error {
@@ -122,7 +123,8 @@ func (p *Prism) Deploy(d *Program, _ *int) error {
 		defer w.Close()
 
 		if _, e := io.Copy(w, r); e != nil {
-			return fmt.Errorf("Failed copying %s to %s: %v", remoteFile, localFile, e)
+			return fmt.Errorf("Failed copying %s to %s: %v",
+				remoteFile, localFile, e)
 		}
 	}
 	return nil
@@ -142,10 +144,12 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 		return nil
 	}
 
-	exe := path.Join(strings.TrimPrefix(cmd.LocalDir, file.LocalPrefix), cmd.Filename)
+	exe := path.Join(strings.TrimPrefix(cmd.LocalDir, file.LocalPrefix),
+		cmd.Filename)
 	os.Chmod(exe, 0774)
 
-	logfile := path.Join(strings.TrimPrefix(cmd.LogBase, file.LocalPrefix), cmd.Filename)
+	logfile := path.Join(strings.TrimPrefix(cmd.LogBase, file.LocalPrefix),
+		cmd.Filename)
 	c := exec.Command(exe, cmd.Args...)
 	fout, e1 := os.Create(logfile + ".out")
 	ferr, e2 := os.Create(logfile + ".err")
@@ -156,30 +160,65 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 	}
 	go io.Copy(fout, cout)
 	go io.Copy(ferr, cerr)
+
 	go func(c *exec.Cmd, cmd Cmd) {
+		if _, exist := p.notifiers[cmd.Addr]; exist {
+			log.Printf("Cannot start %s, which is already started.", cmd.Addr)
+			return
+		} else {
+			p.notifiers[cmd.Addr] = make(chan bool, 1)
+		}
+
 		for i := 0; i < cmd.Retry; i++ {
-			log.Printf("Start process %v", cmd)
+			select {
+			case <-p.notifiers[cmd.Addr]:
+				log.Printf("%v being killed intensionally.", cmd.Addr)
+				break
+			default:
+			}
+
+			log.Printf("Start process %s", cmd.Addr)
 			if e := c.Run(); e != nil {
-				log.Printf("%v failed: %v", cmd, e)
+				log.Printf("%s failed: %v", cmd.Addr, e)
 			} else {
-				log.Printf("%v successfully finished.", cmd)
+				log.Printf("%s successfully finished.", cmd.Addr)
 				break
 			}
 		}
+
+		delete(p.notifiers, cmd.Addr)
 		log.Printf("No more restart of %v.", cmd)
 	}(c, *cmd)
 
 	return nil
 }
 
-func (p *Prism) DeployAndLaunch(i *ProgramAndCmd, _ *int) error {
-	e := p.Deploy(&Program{i.RemoteDir, i.LocalDir, i.Filename}, nil)
-	if e != nil {
-		return e
+// Kill kills a process that was started by Launch and is listening on addr.
+func (p *Prism) Kill(addr string, _ *int) error {
+	// Close notifier channel to prevent Prism from restarting the
+	// process in case Retry > 1.
+	notifier, exists := p.notifiers[addr]
+	if !exists {
+		return fmt.Errorf("%s not started yet", addr)
 	}
-	e = p.Launch(&Cmd{i.LocalDir, i.Filename, i.Args, i.LogBase, i.Retry}, nil)
-	if e != nil {
-		return e
+	close(notifier)
+
+	f := strings.Split(addr, ":")
+	if runtime.GOOS == "linux" {
+		o, e := exec.Command("fuser", "-k", "-n", "tcp", f[1]).CombinedOutput()
+		if e != nil {
+			return fmt.Errorf("fuser %s failed: %v, with output %s", f[1], e, o)
+		}
+	} else if runtime.GOOS == "darwin" {
+		o, e := exec.Command("lsof", "-i:"+f[1], "-t").CombinedOutput()
+		if e != nil {
+			return fmt.Errorf("lsof %s failed: %v, with output %s", f[1], e, o)
+		}
+		pid := strings.TrimSuffix(string(o), "\n")
+		o, e = exec.Command("kill", "-KILL", pid).CombinedOutput()
+		if e != nil {
+			return fmt.Errorf("kill %s failed: %v, with output %s", pid, e, o)
+		}
 	}
 	return nil
 }

@@ -20,7 +20,7 @@ func main() {
 		log.Fatalf("file.Initalize() :%v", e)
 	}
 
-	s := new(prism.Prism)
+	s := prism.NewPrism()
 	rpc.Register(s)
 	rpc.HandleHTTP()
 	l, e := net.Listen("tcp", *addrFlag)

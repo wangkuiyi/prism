@@ -11,12 +11,22 @@ import (
 )
 
 var (
-	addrFlag = flag.String("addr", ":12340", "The address of Prism")
+	prismFlag  = flag.String("prism", ":12340", "The address of Prism")
+	actionFlag = flag.String("action", "start", "{launch, kill}")
 )
 
 func main() {
 	flag.Parse()
 
+	switch *actionFlag {
+	case "launch":
+		launch()
+	case "kill":
+		kill()
+	}
+}
+
+func launch() {
 	log.Println("Initialize connection to HDFS ...")
 	if e := file.Initialize(); e != nil {
 		log.Fatalf("file.Initalize() :%v", e)
@@ -31,19 +41,43 @@ func main() {
 	log.Println("Done")
 
 	log.Println("DialHTTP to Prism server ...")
-	c, e := rpc.DialHTTP("tcp", *addrFlag)
+	c, e := rpc.DialHTTP("tcp", *prismFlag)
 	if e != nil {
-		log.Fatalf("Dialing %s error: %v", *addrFlag, e)
+		log.Fatalf("Dialing %s error: %v", *prismFlag, e)
 	}
+	defer c.Close()
 	log.Println("Done")
 
-	if e := c.Call("Prism.DeployAndLaunch", &prism.ProgramAndCmd{
-		RemoteDir: "hdfs:/hello",
-		LocalDir:  "file:/tmp",
-		Filename:  "hello",
-		Args:      []string{},
-		LogBase:   "file:/tmp",
-		Retry:     2}, nil); e != nil {
+	if e := c.Call("Prism.Deploy",
+		&prism.Program{
+			RemoteDir: "hdfs:/hello",
+			LocalDir:  "file:/tmp",
+			Filename:  "hello"}, nil); e != nil {
+		log.Fatalf("Prism.Deploy failed: %v", e)
+	}
+
+	if e = c.Call("Prism.Launch",
+		&prism.Cmd{
+			Addr:     "localhost:8080",
+			LocalDir: "file:/tmp",
+			Filename: "hello",
+			Args:     []string{},
+			LogBase:  "file:/tmp",
+			Retry:    2}, nil); e != nil {
 		log.Fatalf("Prism.Launch: %v", e)
+	}
+}
+
+func kill() {
+	log.Println("DialHTTP to Prism server ...")
+	c, e := rpc.DialHTTP("tcp", *prismFlag)
+	if e != nil {
+		log.Fatalf("Dialing %s error: %v", *prismFlag, e)
+	}
+	defer c.Close()
+	log.Println("Done")
+
+	if e = c.Call("Prism.Kill", "localhost:8080", nil); e != nil {
+		log.Fatalf("Prism.Kill: %v", e)
 	}
 }
