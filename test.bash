@@ -14,22 +14,32 @@ sleep 1
 $GOPATH/bin/example -prism=:12340 -namenode=:50070 -action=launch
 sleep 1
 R=$(curl -s http://localhost:8080/Hello)
-echo $R
+if [ "$R" != 'Hello, "/Hello"' ]; then
+    echo "hello is not running as expected"
+fi
 
 # Kill hello
 $GOPATH/bin/example -prism=:12340 -namenode=:50070 -action=kill
 sleep 1
 R=$(curl -s http://localhost:8080/Hello)
-echo $R
+if [ "$R" != '' ]; then
+    echo "hello is not killed as expected"
+fi
 
 # Deploy and launch again
 $GOPATH/bin/example -prism=:12340 -namenode=:50070 -action=launch
 sleep 1
 R=$(curl -s http://localhost:8080/Hello)
-echo $R
+if [ "$R" != 'Hello, "/Hello"' ]; then
+    echo "hello is not running as expected"
+fi
 
 # Kill again
 $GOPATH/bin/example -prism=:12340 -namenode=:50070 -action=kill
 sleep 1
 R=$(curl -s http://localhost:8080/Hello)
-echo $R
+if [ "$R" != '' ]; then
+    echo "hello is not killed as expected"
+fi
+
+echo '========= Congratulations! Testing passed. ========='
