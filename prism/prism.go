@@ -10,10 +10,6 @@ import (
 	"net/rpc"
 )
 
-var (
-	addrFlag = flag.String("addr", ":12340", "The listen address")
-)
-
 func main() {
 	flag.Parse()
 	if e := file.Initialize(); e != nil {
@@ -23,10 +19,10 @@ func main() {
 	s := prism.NewPrism()
 	rpc.Register(s)
 	rpc.HandleHTTP()
-	l, e := net.Listen("tcp", *addrFlag)
+	l, e := net.Listen("tcp", *prism.Addr)
 	if e != nil {
-		log.Fatalf("Cannot listen on %s: %v", *addrFlag, e)
+		log.Fatalf("Cannot listen on %s: %v", *prism.Addr, e)
 	}
-	log.Printf("Listening on %s", *addrFlag)
+	log.Printf("Listening on %s", *prism.Addr)
 	http.Serve(l, nil)
 }

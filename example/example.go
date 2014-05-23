@@ -5,13 +5,11 @@ import (
 	"github.com/wangkuiyi/file"
 	"github.com/wangkuiyi/prism"
 	"log"
-	"net/rpc"
 	"os"
 	"path"
 )
 
 var (
-	prismFlag  = flag.String("prism", ":12340", "The address of Prism")
 	actionFlag = flag.String("action", "start", "{launch, kill}")
 )
 
@@ -33,46 +31,36 @@ func launch() {
 	}
 	log.Println("Done")
 
-	exe := path.Join(file.LocalPrefix+path.Dir(os.Args[0]), "hello")
-	log.Println("Upload", exe, "to HDFS ...")
-	if _, e := file.Put(exe, "hdfs:/hello"); e != nil {
-		log.Fatalf("Put %s error: %v", exe, e)
+	buildDir := file.LocalPrefix + path.Dir(os.Args[0])
+	log.Printf("Publish %s ...", buildDir)
+	if e := prism.Publish(buildDir, "hdfs:/prism_unittest"); e != nil {
+		log.Fatalf("Error: %v", e)
 	}
 	log.Println("Done")
 
-	log.Println("DialHTTP to Prism server ...")
-	c, e := rpc.DialHTTP("tcp", *prismFlag)
+	log.Printf("Connect to Prism server %s ...", *prism.Addr)
+	c, e := prism.Connect()
 	if e != nil {
-		log.Fatalf("Dialing %s error: %v", *prismFlag, e)
+		log.Fatalf("Error: %v", e)
 	}
 	defer c.Close()
 	log.Println("Done")
 
-	if e := c.Call("Prism.Deploy",
-		&prism.Program{
-			RemoteDir: "hdfs:/hello",
-			LocalDir:  "file:/tmp",
-			Filename:  "hello"}, nil); e != nil {
+	if e = c.Deploy("hdfs:/hello", "file:/tmp", "hello"); e != nil {
 		log.Fatalf("Prism.Deploy failed: %v", e)
 	}
 
-	if e = c.Call("Prism.Launch",
-		&prism.Cmd{
-			Addr:     "localhost:8080",
-			LocalDir: "file:/tmp",
-			Filename: "hello",
-			Args:     []string{},
-			LogBase:  "file:/tmp",
-			Retry:    2}, nil); e != nil {
+	if e = c.Launch(
+		"localhost:8080", "file:/tmp", "hello", []string{}, "file:/tmp", 2); e != nil {
 		log.Fatalf("Prism.Launch: %v", e)
 	}
 }
 
 func kill() {
-	log.Println("DialHTTP to Prism server ...")
-	c, e := rpc.DialHTTP("tcp", *prismFlag)
+	log.Printf("Connect to Prism server %s ...", *prism.Addr)
+	c, e := prism.Connect()
 	if e != nil {
-		log.Fatalf("Dialing %s error: %v", *prismFlag, e)
+		log.Fatalf("Error: %v", e)
 	}
 	defer c.Close()
 	log.Println("Done")
