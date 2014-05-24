@@ -6,18 +6,13 @@ import (
 	"fmt"
 	"github.com/wangkuiyi/file"
 	"io"
-	"log"
 	"net/rpc"
 	"path"
 	"strings"
 )
 
-type Client struct {
-	*rpc.Client
-}
-
 var (
-	Addr = flag.String("prism", ":12340", "The listen address")
+	Port = flag.Int("prism_port", 12340, "Listening port of Prism")
 )
 
 // Publish copies directory sourceDir to destDir.  It creates destDir
@@ -72,20 +67,25 @@ func Publish(localDir, remotePath string) error {
 
 // Connect connects to Prism server specified by command-line flag
 // prism.Addr.
-func Connect() (Client, error) {
-	log.Printf("DialHTTP to Prism server %s", *Addr)
-	c, e := rpc.DialHTTP("tcp", *Addr)
+func connect(host string) (*rpc.Client, error) {
+	addr := fmt.Sprintf("%s:%d", host, *Port)
+	c, e := rpc.DialHTTP("tcp", addr)
 	if e != nil {
-		return Client{nil}, fmt.Errorf(
-			"Dialing Prism server %s error: %v", *Addr, e)
+		return nil, fmt.Errorf("Dialing Prism %s: %v", addr, e)
 	}
-	return Client{c}, nil
+	return c, nil
 }
 
 // Deploy downloads executables from remoteDir (usually HDFS) to localDir.
-func (c Client) Deploy(remotePath, localDir string) error {
-	if e := c.Call("Prism.Deploy",
-		&Program{remotePath, localDir}, nil); e != nil {
+func Deploy(host, remotePath, localDir string) error {
+	c, e := connect(host)
+	if e != nil {
+		return e
+	}
+	defer c.Close()
+
+	e = c.Call("Prism.Deploy", &Program{remotePath, localDir}, nil)
+	if e != nil {
 		return fmt.Errorf("Prism.Deploy failed: %v", e)
 	}
 	return nil
@@ -93,17 +93,39 @@ func (c Client) Deploy(remotePath, localDir string) error {
 
 // Launch launches a deployed executable, and assumes that the process
 // will be listening on addr (indeed it does not have to).
-func (c Client) Launch(addr, localDir, filename string,
-	args []string, logbase string, retry int) error {
-	e := c.Call("Prism.Launch",
-		&Cmd{addr, localDir, filename, args, logbase, retry}, nil)
+func Launch(addr, localDir, filename string,
+	args []string, logDir string, retry int) error {
+
+	fields := strings.Split(addr, ":")
+	if len(fields) != 2 || len(fields[0]) <= 0 || len(fields[1]) <= 0 {
+		return fmt.Errorf("Launch addr %s not in form of host:port")
+	}
+
+	c, e := connect(fields[0])
+	if e != nil {
+		return e
+	}
+	defer c.Close()
+
+	e = c.Call("Prism.Launch", &Cmd{addr, localDir, filename, args, logDir, retry}, nil)
 	if e != nil {
 		return fmt.Errorf("Prism.Launch failed: %v", e)
 	}
 	return nil
 }
 
-func (c Client) Kill(addr string) error {
+func Kill(addr string) error {
+	fields := strings.Split(addr, ":")
+	if len(fields) != 2 || len(fields[0]) <= 0 || len(fields[1]) <= 0 {
+		return fmt.Errorf("Launch addr %s not in form of host:port")
+	}
+
+	c, e := connect(fields[0])
+	if e != nil {
+		return e
+	}
+	defer c.Close()
+
 	if e := c.Call("Prism.Kill", addr, nil); e != nil {
 		return fmt.Errorf("Prism.Kill(%s) failed: %v", addr, e)
 	}

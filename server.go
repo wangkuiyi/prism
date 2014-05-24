@@ -34,16 +34,16 @@ type Program struct {
 	RemotePath, LocalDir string
 }
 
-// Cmd specifies the command as well as Args and LogBase that are
+// Cmd specifies the command as well as Args and LogDir that are
 // used to start a local process.  LocalDir/Filename must exists.
-// LogBase is a local directory which hold log files whose content
+// LogDir is a local directory which hold log files whose content
 // include the standard outputs and error of the launched process.
 // Cmd is supposed to be used with RPC Launch.
 type Cmd struct {
 	Addr               string
 	LocalDir, Filename string
 	Args               []string
-	LogBase            string
+	LogDir             string
 	Retry              int
 }
 
@@ -186,8 +186,8 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 		cmd.Filename)
 	os.Chmod(exe, 0774)
 
-	logfile := path.Join(strings.TrimPrefix(cmd.LogBase, file.LocalPrefix),
-		cmd.Filename)
+	logfile := path.Join(strings.TrimPrefix(cmd.LogDir, file.LocalPrefix),
+		cmd.Filename+"-"+cmd.Addr)
 	c := exec.Command(exe, cmd.Args...)
 	fout, e1 := os.Create(logfile + ".out")
 	ferr, e2 := os.Create(logfile + ".err")

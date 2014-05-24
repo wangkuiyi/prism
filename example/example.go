@@ -38,34 +38,17 @@ func launch() {
 	}
 	log.Println("Done")
 
-	log.Printf("Connect to Prism server %s ...", *prism.Addr)
-	c, e := prism.Connect()
-	if e != nil {
-		log.Fatalf("Error: %v", e)
-	}
-	defer c.Close()
-	log.Println("Done")
-
-	if e = c.Deploy("hdfs:/prism_unittest.zip", "file:/tmp"); e != nil {
+	if e := prism.Deploy("localhost", "hdfs:/prism_unittest.zip", "file:/tmp"); e != nil {
 		log.Fatalf("Prism.Deploy failed: %v", e)
 	}
 
-	if e = c.Launch(
-		"localhost:8080", "file:/tmp", "hello", []string{}, "file:/tmp", 2); e != nil {
+	if e := prism.Launch("localhost:8080", "file:/tmp", "hello", []string{}, "file:/tmp", 2); e != nil {
 		log.Fatalf("Prism.Launch: %v", e)
 	}
 }
 
 func kill() {
-	log.Printf("Connect to Prism server %s ...", *prism.Addr)
-	c, e := prism.Connect()
-	if e != nil {
-		log.Fatalf("Error: %v", e)
-	}
-	defer c.Close()
-	log.Println("Done")
-
-	if e = c.Call("Prism.Kill", "localhost:8080", nil); e != nil {
+	if e := prism.Kill("localhost:8080"); e != nil {
 		log.Fatalf("Prism.Kill: %v", e)
 	}
 }
