@@ -186,11 +186,10 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 		cmd.Filename)
 	os.Chmod(exe, 0774)
 
-	logfile := path.Join(strings.TrimPrefix(cmd.LogDir, file.LocalPrefix),
-		cmd.Filename+"-"+cmd.Addr)
+	logfile := path.Join(cmd.LogDir, cmd.Filename+"-"+cmd.Addr)
 	c := exec.Command(exe, cmd.Args...)
-	fout, e1 := os.Create(logfile + ".out")
-	ferr, e2 := os.Create(logfile + ".err")
+	fout, e1 := file.Create(logfile + ".out")
+	ferr, e2 := file.Create(logfile + ".err")
 	cout, e3 := c.StdoutPipe()
 	cerr, e4 := c.StderrPipe()
 	if e := aggregateErrors(e1, e2, e3, e4); e != nil {
