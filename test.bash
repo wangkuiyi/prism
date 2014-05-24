@@ -8,6 +8,7 @@ killall hello
 # Start Prism and listen on :12340
 $GOPATH/bin/prism -prism=:12340 -namenode=:50070&
 
+SUC=0
 
 # Deploy and launch hello using Prism
 sleep 1
@@ -16,6 +17,7 @@ sleep 1
 R=$(curl -s http://localhost:8080/Hello)
 if [ "$R" != 'Hello, "/Hello"' ]; then
     echo "hello is not running as expected"
+    SUC=$(expr $SUC + 1)
 fi
 
 # Kill hello
@@ -24,6 +26,7 @@ sleep 1
 R=$(curl -s http://localhost:8080/Hello)
 if [ "$R" != '' ]; then
     echo "hello is not killed as expected"
+    SUC=$(expr $SUC + 1)
 fi
 
 # Deploy and launch again
@@ -32,6 +35,7 @@ sleep 1
 R=$(curl -s http://localhost:8080/Hello)
 if [ "$R" != 'Hello, "/Hello"' ]; then
     echo "hello is not running as expected"
+    SUC=$(expr $SUC + 1)
 fi
 
 # Kill again
@@ -40,6 +44,11 @@ sleep 1
 R=$(curl -s http://localhost:8080/Hello)
 if [ "$R" != '' ]; then
     echo "hello is not killed as expected"
+    SUC=$(expr $SUC + 1)
 fi
 
-echo '========= Congratulations! Testing passed. ========='
+if [ "$SUC" == "0" ]; then
+    echo '========= Congratulations! Testing passed. ========='
+else
+    echo "========= " $SUC tests failed!. " ========="
+fi

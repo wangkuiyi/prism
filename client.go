@@ -1,6 +1,7 @@
 package prism
 
 import (
+	"archive/zip"
 	"flag"
 	"fmt"
 	"github.com/wangkuiyi/file"
@@ -22,42 +23,50 @@ var (
 // Publish copies directory sourceDir to destDir.  It creates destDir
 // if it does not exist yet.  Currently it does not copy
 // sub-directories recursively.
-func Publish(sourceDir, destDir string) error {
-	if (strings.HasPrefix(sourceDir, file.HDFSPrefix) ||
-		strings.HasPrefix(destDir, file.HDFSPrefix)) &&
+func Publish(localDir, remotePath string) error {
+	if (strings.HasPrefix(localDir, file.HDFSPrefix) ||
+		strings.HasPrefix(remotePath, file.HDFSPrefix)) &&
 		!file.IsConnectedToHDFS() {
-		return fmt.Errorf("source (%s) or dest (%s) on HDFS, but not connected",
-			sourceDir, destDir)
+		return fmt.Errorf("%s or %s on HDFS, but not connected",
+			localDir, remotePath)
 	}
 
-	is, e := file.List(sourceDir)
+	is, e := file.List(localDir)
 	if e != nil {
-		return fmt.Errorf("Cannot list source dir %s", sourceDir)
+		return fmt.Errorf("Cannot list source dir %s", localDir)
 	}
 
-	// Create the destination directory if not exists yet.
-	file.MkDir(destDir)
+	file.MkDir(path.Dir(remotePath))
+	o, e := file.Create(remotePath)
+	if e != nil {
+		return fmt.Errorf("Create %s: %v", remotePath, e)
+	}
+	defer o.Close()
+
+	w := zip.NewWriter(o)
 
 	for _, i := range is {
-		s := path.Join(sourceDir, i.Name)
-		d := path.Join(destDir, i.Name)
-
+		s := path.Join(localDir, i.Name)
 		r, e := file.Open(s)
 		if e != nil {
-			return fmt.Errorf("Cannot open %s: %v", s, e)
+			return fmt.Errorf("Open %s: %v", s, e)
 		}
 		defer r.Close()
 
-		w, e := file.Create(d)
+		o, e := w.Create(i.Name)
 		if e != nil {
-			return fmt.Errorf("Cannot create %s: %v", d, e)
+			return fmt.Errorf("Create zipped %s: %v", i.Name, e)
 		}
-		defer w.Close()
 
-		if _, e := io.Copy(w, r); e != nil {
-			return fmt.Errorf("Failed copy from %s to %s: %v", s, d, e)
+		if _, e := io.Copy(o, r); e != nil {
+			return fmt.Errorf("Zip %s/%s to %s: %v", s, i.Name, remotePath, e)
 		}
 	}
+
+	if e := w.Close(); e != nil {
+		return fmt.Errorf("Close zip archive %s: %v", remotePath, e)
+	}
+
 	return nil
 }
 
@@ -74,9 +83,9 @@ func Connect() (Client, error) {
 }
 
 // Deploy downloads executables from remoteDir (usually HDFS) to localDir.
-func (c Client) Deploy(remoteDir, localDir, filename string) error {
+func (c Client) Deploy(remotePath, localDir string) error {
 	if e := c.Call("Prism.Deploy",
-		&Program{remoteDir, localDir, filename}, nil); e != nil {
+		&Program{remotePath, localDir}, nil); e != nil {
 		return fmt.Errorf("Prism.Deploy failed: %v", e)
 	}
 	return nil

@@ -33,7 +33,7 @@ func launch() {
 
 	buildDir := file.LocalPrefix + path.Dir(os.Args[0])
 	log.Printf("Publish %s ...", buildDir)
-	if e := prism.Publish(buildDir, "hdfs:/prism_unittest"); e != nil {
+	if e := prism.Publish(buildDir, "hdfs:/prism_unittest.zip"); e != nil {
 		log.Fatalf("Error: %v", e)
 	}
 	log.Println("Done")
@@ -46,7 +46,7 @@ func launch() {
 	defer c.Close()
 	log.Println("Done")
 
-	if e = c.Deploy("hdfs:/hello", "file:/tmp", "hello"); e != nil {
+	if e = c.Deploy("hdfs:/prism_unittest.zip", "file:/tmp"); e != nil {
 		log.Fatalf("Prism.Deploy failed: %v", e)
 	}
 

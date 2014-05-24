@@ -1,6 +1,7 @@
 package prism
 
 import (
+	"archive/zip"
 	"bytes"
 	"crypto/md5"
 	"errors"
@@ -25,11 +26,12 @@ func NewPrism() *Prism {
 	return &Prism{make(map[string]chan bool)}
 }
 
-// Program specifies to deploy Filename from RemoteDir to LocalDir.
-// Both RemoteDir and LocalDir must have filesystem prefixes like
+// Program an deployment of RemotePath to LocalDir.  RemotePath must
+// specify a zip file which contains a package of one or more files.
+// Both RemotePath and LocalDir must have filesystem prefixes like
 // "hdfs:" or "file:".
 type Program struct {
-	RemoteDir, LocalDir, Filename string
+	RemotePath, LocalDir string
 }
 
 // Cmd specifies the command as well as Args and LogBase that are
@@ -45,18 +47,15 @@ type Cmd struct {
 	Retry              int
 }
 
+// Deploy unpack an zip file specified by Program.RemotePath to
+// directory Program.LocalDir.
 func (p *Prism) Deploy(d *Program, _ *int) error {
-	// TODO(wyi): Currently, Deploy deploy a single executable file.
-	// In the future, we should make it copying all files in RemoteDir
-	// to LocalDir if Filename is nil or empty.
-	remoteFile := path.Join(d.RemoteDir, d.Filename)
-	localFile := path.Join(d.LocalDir, d.Filename)
-	tempFile := fmt.Sprintf("%s.%d-%d",
-		path.Join(d.LocalDir, d.Filename), os.Getpid(), rand.Int())
+	localFile := path.Join(d.LocalDir, path.Base(d.RemotePath))
+	tempFile := fmt.Sprintf("%s.%d-%d", localFile, os.Getpid(), rand.Int())
 
-	r, e := file.Open(remoteFile)
+	r, e := file.Open(d.RemotePath)
 	if e != nil {
-		return fmt.Errorf("Cannot open HDFS file %s: %v", remoteFile, e)
+		return fmt.Errorf("Cannot open HDFS file %s: %v", d.RemotePath, e)
 	}
 	defer r.Close()
 
@@ -65,7 +64,7 @@ func (p *Prism) Deploy(d *Program, _ *int) error {
 		return fmt.Errorf("Cannot test existence of %s: %v", localFile, e)
 	}
 
-	if b { // If localFile already exists, compare MD5sum.
+	if b { // If localFile already exists, compare MD5 checksum.
 		w, e := file.Create(tempFile)
 		if e != nil {
 			return fmt.Errorf("Cannot create %s: %v", tempFile, e)
@@ -80,7 +79,7 @@ func (p *Prism) Deploy(d *Program, _ *int) error {
 				h := md5.New()
 				if _, e := io.Copy(h, side); e != nil {
 					return fmt.Errorf("Error downloading %s or computing MD5: %v",
-						remoteFile, e)
+						d.RemotePath, e)
 				}
 				sumRemote = h.Sum(sumRemote)
 				return nil
@@ -116,6 +115,7 @@ func (p *Prism) Deploy(d *Program, _ *int) error {
 		}
 
 	} else { // local file does not exist
+		file.MkDir(d.LocalDir)
 		w, e := file.Create(localFile)
 		if e != nil {
 			return fmt.Errorf("Cannot create %s: %v", localFile, e)
@@ -124,9 +124,47 @@ func (p *Prism) Deploy(d *Program, _ *int) error {
 
 		if _, e := io.Copy(w, r); e != nil {
 			return fmt.Errorf("Failed copying %s to %s: %v",
-				remoteFile, localFile, e)
+				d.RemotePath, localFile, e)
 		}
 	}
+
+	if strings.HasPrefix(localFile, file.LocalPrefix) {
+		// Remove filesystem prefix, as unzipLocal handles only local file.
+		fs1 := strings.Split(localFile, ":")
+		fs2 := strings.Split(d.LocalDir, ":")
+		unzipLocal(strings.Join(fs1[1:], ":"), strings.Join(fs2[1:], ":"))
+	}
+
+	return nil
+}
+
+func unzipLocal(name, dir string) error {
+	r, e := zip.OpenReader(name)
+	if e != nil {
+		return fmt.Errorf("Cannot open %s: %v", name, e)
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		rc, e := f.Open()
+		if e != nil {
+			return fmt.Errorf("Open zipped %s: %v", f.Name)
+		}
+
+		outFile := path.Join(dir, f.Name)
+		o, e := os.Create(outFile)
+		if e != nil {
+			return fmt.Errorf("Cannot create %s: %v", outFile)
+		}
+
+		if _, e := io.Copy(o, rc); e != nil {
+			return fmt.Errorf("Copy %s to %s: %v", f.Name, outFile, e)
+		}
+
+		o.Close()
+		rc.Close()
+	}
+
 	return nil
 }
 
