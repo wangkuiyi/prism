@@ -186,6 +186,8 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 		cmd.Filename)
 	os.Chmod(exe, 0774)
 
+	file.MkDir(cmd.LogDir)
+
 	logfile := path.Join(cmd.LogDir, cmd.Filename+"-"+cmd.Addr)
 	c := exec.Command(exe, cmd.Args...)
 	fout, e1 := file.Create(logfile + ".out")
@@ -224,7 +226,7 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 		}
 
 		delete(p.notifiers, cmd.Addr)
-		log.Printf("No more restart of %v.", cmd)
+		log.Printf("No more restart of %s.", cmd.Addr)
 	}(c, *cmd)
 
 	return nil
