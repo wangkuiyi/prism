@@ -16,6 +16,7 @@ import (
 	"path"
 	"runtime"
 	"strings"
+	"time"
 )
 
 type Prism struct {
@@ -169,6 +170,10 @@ func unzipLocal(name, dir string) error {
 }
 
 func (p *Prism) Launch(cmd *Cmd, _ *int) error {
+	if e := p.Kill(cmd.Addr, nil); e != nil {
+		log.Printf("Kill %s before launch failed: %v", cmd.Addr, e)
+	}
+
 	aggregateErrors := func(es ...error) error {
 		r := ""
 		for _, e := range es {
@@ -200,6 +205,7 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 	go io.Copy(fout, cout)
 	go io.Copy(ferr, cerr)
 
+	log.Printf("Launch %s %v as %s", exe, cmd.Args, cmd.Addr)
 	go func(c *exec.Cmd, cmd Cmd) {
 		if _, exist := p.notifiers[cmd.Addr]; exist {
 			log.Printf("Cannot start %s, which is already started.", cmd.Addr)
@@ -216,9 +222,9 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 			default:
 			}
 
-			log.Printf("Start process %s", cmd.Addr)
 			if e := c.Run(); e != nil {
-				log.Printf("%s failed: %v", cmd.Addr, e)
+				log.Printf("Launch %s failed: %v", cmd.Addr, e)
+				time.Sleep(time.Second) // debug
 			} else {
 				log.Printf("%s successfully finished.", cmd.Addr)
 				break
@@ -237,10 +243,11 @@ func (p *Prism) Kill(addr string, _ *int) error {
 	// Close notifier channel to prevent Prism from restarting the
 	// process in case Retry > 1.
 	notifier, exists := p.notifiers[addr]
-	if !exists {
-		return fmt.Errorf("%s not started yet", addr)
+	if exists {
+		close(notifier)
+		// If !exists, the process might still exist if it was started
+		// by another starter.
 	}
-	close(notifier)
 
 	f := strings.Split(addr, ":")
 	if runtime.GOOS == "linux" {

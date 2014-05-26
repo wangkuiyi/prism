@@ -25,6 +25,6 @@ func main() {
 	if e != nil {
 		log.Fatalf("Cannot listen on %s: %v", addr, e)
 	}
-	log.Printf("Listening on %s", addr)
+	log.Printf("Prism listening on %s", addr)
 	http.Serve(l, nil)
 }
