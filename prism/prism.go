@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"github.com/wangkuiyi/file"
 	"github.com/wangkuiyi/prism"
 	"log"
@@ -10,23 +11,20 @@ import (
 	"net/rpc"
 )
 
-var (
-	addrFlag = flag.String("addr", ":12340", "The listen address")
-)
-
 func main() {
 	flag.Parse()
 	if e := file.Initialize(); e != nil {
 		log.Fatalf("file.Initalize() :%v", e)
 	}
 
-	s := new(prism.Prism)
+	s := prism.NewPrism()
 	rpc.Register(s)
 	rpc.HandleHTTP()
-	l, e := net.Listen("tcp", *addrFlag)
+	addr := fmt.Sprintf(":%d", *prism.Port)
+	l, e := net.Listen("tcp", addr)
 	if e != nil {
-		log.Fatalf("Cannot listen on %s: %v", *addrFlag, e)
+		log.Fatalf("Cannot listen on %s: %v", addr, e)
 	}
-	log.Printf("Listening on %s", *addrFlag)
+	log.Printf("Prism listening on %s", addr)
 	http.Serve(l, nil)
 }
