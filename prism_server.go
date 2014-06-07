@@ -95,7 +95,7 @@ func (p *Prism) Deploy(d *Program, _ *int) error {
 				if _, e := io.Copy(h, l); e != nil {
 					return fmt.Errorf("Error computing MD5 of %s: %v", localFile, e)
 				}
-				sumLocal = h.Sum(sumRemote)
+				sumLocal = h.Sum(sumLocal)
 				return nil
 			},
 		); e != nil {
