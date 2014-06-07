@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	actionFlag = flag.String("action", "start", "{launch, kill}")
+	actionFlag = flag.String("action", "launch", "{launch, kill}")
 )
 
 func main() {
@@ -38,11 +38,13 @@ func launch() {
 	}
 	log.Println("Done")
 
-	if e := prism.Deploy("localhost", "hdfs:/prism_unittest.zip", "file:/tmp"); e != nil {
+	if e := prism.Deploy("localhost", "hdfs:/prism_unittest.zip",
+		"file:/tmp"); e != nil {
 		log.Fatalf("Prism.Deploy failed: %v", e)
 	}
 
-	if e := prism.Launch("localhost:8080", "file:/tmp", "hello", []string{}, "file:/tmp", 2); e != nil {
+	if e := prism.Launch("localhost:8080", "file:/tmp", "hello", []string{},
+		"file:/tmp", 2); e != nil {
 		log.Fatalf("Prism.Launch: %v", e)
 	}
 }
