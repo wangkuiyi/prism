@@ -107,7 +107,8 @@ func Launch(addr, localDir, filename string,
 	}
 	defer c.Close()
 
-	e = c.Call("Prism.Launch", &Cmd{addr, localDir, filename, args, logDir, retry}, nil)
+	e = c.Call("Prism.Launch",
+		&Cmd{addr, localDir, filename, args, logDir, retry}, nil)
 	if e != nil {
 		return fmt.Errorf("Prism.Launch failed: %v", e)
 	}

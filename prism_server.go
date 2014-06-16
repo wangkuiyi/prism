@@ -16,7 +16,6 @@ import (
 	"path"
 	"runtime"
 	"strings"
-	"time"
 )
 
 type Prism struct {
@@ -79,7 +78,7 @@ func (p *Prism) Deploy(d *Program, _ *int) error {
 			func() error {
 				h := md5.New()
 				if _, e := io.Copy(h, side); e != nil {
-					return fmt.Errorf("Error downloading %s or computing MD5: %v",
+					return fmt.Errorf("Download %s or computing MD5: %v",
 						d.RemotePath, e)
 				}
 				sumRemote = h.Sum(sumRemote)
@@ -93,9 +92,9 @@ func (p *Prism) Deploy(d *Program, _ *int) error {
 						localFile, e)
 				}
 				if _, e := io.Copy(h, l); e != nil {
-					return fmt.Errorf("Error computing MD5 of %s: %v", localFile, e)
+					return fmt.Errorf("Compute MD5 of %s: %v", localFile, e)
 				}
-				sumLocal = h.Sum(sumRemote)
+				sumLocal = h.Sum(sumLocal)
 				return nil
 			},
 		); e != nil {
@@ -106,7 +105,7 @@ func (p *Prism) Deploy(d *Program, _ *int) error {
 			if e := os.Rename(
 				strings.TrimPrefix(tempFile, file.LocalPrefix),
 				strings.TrimPrefix(localFile, file.LocalPrefix)); e != nil {
-				return fmt.Errorf("Cannot rename %s to %s", tempFile, localFile)
+				return fmt.Errorf("Rename %s to %s", tempFile, localFile)
 			}
 		} else {
 			e := os.Remove(strings.TrimPrefix(tempFile, file.LocalPrefix))
@@ -223,8 +222,7 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 			}
 
 			if e := c.Run(); e != nil {
-				log.Printf("Launch %s failed: %v", cmd.Addr, e)
-				time.Sleep(time.Second) // debug
+				log.Printf("Prims launches %s failed: %v", cmd.Addr, e)
 			} else {
 				log.Printf("%s successfully finished.", cmd.Addr)
 				break
@@ -253,7 +251,8 @@ func (p *Prism) Kill(addr string, _ *int) error {
 	if runtime.GOOS == "linux" {
 		o, e := exec.Command("fuser", "-k", "-n", "tcp", f[1]).CombinedOutput()
 		if e != nil {
-			return fmt.Errorf("fuser %s failed: %v, with output %s", f[1], e, o)
+			return fmt.Errorf("fuser %s failed: %v, with output %s",
+				f[1], e, o)
 		}
 	} else if runtime.GOOS == "darwin" {
 		o, e := exec.Command("lsof", "-i:"+f[1], "-t").CombinedOutput()
