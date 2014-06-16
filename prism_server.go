@@ -14,16 +14,20 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"reflect"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 )
 
 type Prism struct {
+	mutex     sync.Mutex
 	notifiers map[string]chan bool
 }
 
 func NewPrism() *Prism {
-	return &Prism{make(map[string]chan bool)}
+	return &Prism{notifiers: make(map[string]chan bool)}
 }
 
 // Program an deployment of RemotePath to LocalDir.  RemotePath must
@@ -168,22 +172,25 @@ func unzipLocal(name, dir string) error {
 	return nil
 }
 
-func (p *Prism) Launch(cmd *Cmd, _ *int) error {
-	if e := p.Kill(cmd.Addr, nil); e != nil {
-		log.Printf("Kill %s before launch failed: %v", cmd.Addr, e)
+func aggregateErrors(es ...error) error {
+	r := ""
+	for _, e := range es {
+		if e != nil {
+			r += fmt.Sprintf("%v\n", e)
+		}
 	}
+	if r != "" {
+		return errors.New(r)
+	}
+	return nil
+}
 
-	aggregateErrors := func(es ...error) error {
-		r := ""
-		for _, e := range es {
-			if e != nil {
-				r += fmt.Sprintf("%v\n", e)
-			}
-		}
-		if r != "" {
-			return errors.New(r)
-		}
-		return nil
+func (p *Prism) Launch(cmd *Cmd, _ *int) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	if _, exists := p.notifiers[cmd.Addr]; exists {
+		return fmt.Errorf("Cannot start %s, which has been running.", cmd.Addr)
 	}
 
 	exe := path.Join(strings.TrimPrefix(cmd.LocalDir, file.LocalPrefix),
@@ -205,13 +212,10 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 	go io.Copy(ferr, cerr)
 
 	log.Printf("Launch %s %v as %s", exe, cmd.Args, cmd.Addr)
-	go func(c *exec.Cmd, cmd Cmd) {
-		if _, exist := p.notifiers[cmd.Addr]; exist {
-			log.Printf("Cannot start %s, which is already started.", cmd.Addr)
-			return
-		} else {
-			p.notifiers[cmd.Addr] = make(chan bool, 1)
-		}
+	go func(p *Prism, c *exec.Cmd, cmd Cmd) {
+		p.mutex.Lock()
+		p.notifiers[cmd.Addr] = make(chan bool, 1)
+		p.mutex.Unlock()
 
 		for i := 0; i < cmd.Retry; i++ {
 			select {
@@ -222,16 +226,19 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 			}
 
 			if e := c.Run(); e != nil {
-				log.Printf("Prims launches %s failed: %v", cmd.Addr, e)
+				log.Printf("%s failed: %v", cmd.Addr, e)
+				time.Sleep(time.Second)
 			} else {
 				log.Printf("%s successfully finished.", cmd.Addr)
 				break
 			}
 		}
 
+		p.mutex.Lock()
 		delete(p.notifiers, cmd.Addr)
+		p.mutex.Unlock()
 		log.Printf("No more restart of %s.", cmd.Addr)
-	}(c, *cmd)
+	}(p, c, *cmd)
 
 	return nil
 }
@@ -240,6 +247,8 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 func (p *Prism) Kill(addr string, _ *int) error {
 	// Close notifier channel to prevent Prism from restarting the
 	// process in case Retry > 1.
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 	notifier, exists := p.notifiers[addr]
 	if exists {
 		close(notifier)
@@ -266,4 +275,10 @@ func (p *Prism) Kill(addr string, _ *int) error {
 		}
 	}
 	return nil
+}
+
+func (p *Prism) KillAll() error {
+	return parallel.RangeMap(p.notifiers, func(k, _ reflect.Value) error {
+		return p.Kill(k.String(), nil)
+	})
 }

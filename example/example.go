@@ -11,6 +11,7 @@ import (
 
 var (
 	actionFlag = flag.String("action", "launch", "{launch, kill}")
+	retryFlag  = flag.Int("retry", 10, "The number of retries")
 )
 
 func main() {
@@ -44,7 +45,7 @@ func launch() {
 	}
 
 	if e := prism.Launch("localhost:8080", "file:/tmp", "hello", []string{},
-		"file:/tmp", 2); e != nil {
+		"file:/tmp", *retryFlag); e != nil {
 		log.Fatalf("Prism.Launch: %v", e)
 	}
 }
