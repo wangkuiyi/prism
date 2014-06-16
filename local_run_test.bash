@@ -21,7 +21,7 @@ $GOPATH/bin/example -action=launch
 sleep 1
 R=$(curl -s http://localhost:8080/Hello)
 if [ "$R" != 'Hello, "/Hello"' ]; then
-    echo "hello is not running as expected"
+    echo -e "\033[1mhello is not running as expected\033[0m"
     SUC=$(expr $SUC + 1)
 fi
 
@@ -30,7 +30,7 @@ $GOPATH/bin/example -action=kill
 sleep 1
 R=$(curl -s http://localhost:8080/Hello)
 if [ "$R" != '' ]; then
-    echo "hello is not killed as expected"
+    echo -e "\033[1mhello is not killed as expected\033[0m"
     SUC=$(expr $SUC + 1)
 fi
 
@@ -39,7 +39,7 @@ $GOPATH/bin/example -action=launch
 sleep 1
 R=$(curl -s http://localhost:8080/Hello)
 if [ "$R" != 'Hello, "/Hello"' ]; then
-    echo "hello is not running as expected"
+    echo -e "\033[1mhello is not running as expected\033[0m"
     SUC=$(expr $SUC + 1)
 fi
 
@@ -48,12 +48,12 @@ $GOPATH/bin/example -action=kill
 sleep 1
 R=$(curl -s http://localhost:8080/Hello)
 if [ "$R" != '' ]; then
-    echo "hello is not killed as expected"
+    echo -e "\033[1mhello is not killed as expected\033[0m"
     SUC=$(expr $SUC + 1)
 fi
 
 if [ "$SUC" == "0" ]; then
-    echo '========= Congratulations! Testing passed. ========='
+    echo -e "\033[1m========= Congratulations! Testing passed. =========\033[0m"
 else
-    echo "========= " $SUC tests failed!. " ========="
+    echo -e "\033[1m========= " $SUC tests failed!. " =========\033[0m"
 fi
