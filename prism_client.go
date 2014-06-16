@@ -15,9 +15,8 @@ var (
 	Port = flag.Int("prism_port", 12340, "Listening port of Prism")
 )
 
-// Publish copies directory sourceDir to destDir.  It creates destDir
-// if it does not exist yet.  Currently it does not copy
-// sub-directories recursively.
+// Publish packs localDir into a zip file named by remotePath.  It
+// creates all necessary levels of parent directories of remotePath.
 func Publish(localDir, remotePath string) error {
 	if (strings.HasPrefix(localDir, file.HDFSPrefix) ||
 		strings.HasPrefix(remotePath, file.HDFSPrefix)) &&
@@ -65,8 +64,8 @@ func Publish(localDir, remotePath string) error {
 	return nil
 }
 
-// Connect connects to Prism server specified by command-line flag
-// prism.Addr.
+// Connect connects to the Prism server running on host and listening
+// on Port.
 func connect(host string) (*rpc.Client, error) {
 	addr := fmt.Sprintf("%s:%d", host, *Port)
 	c, e := rpc.DialHTTP("tcp", addr)
@@ -76,7 +75,9 @@ func connect(host string) (*rpc.Client, error) {
 	return c, nil
 }
 
-// Deploy downloads executables from remoteDir (usually HDFS) to localDir.
+// Deploy downloads the zip archive remotePath, usually created by
+// Publish and put on HDFS, to localDir of host.  localDir must
+// exists.
 func Deploy(host, remotePath, localDir string) error {
 	c, e := connect(host)
 	if e != nil {
@@ -107,7 +108,8 @@ func Launch(addr, localDir, filename string,
 	}
 	defer c.Close()
 
-	e = c.Call("Prism.Launch", &Cmd{addr, localDir, filename, args, logDir, retry}, nil)
+	e = c.Call("Prism.Launch",
+		&Cmd{addr, localDir, filename, args, logDir, retry}, nil)
 	if e != nil {
 		return fmt.Errorf("Prism.Launch failed: %v", e)
 	}
