@@ -11,6 +11,7 @@ import (
 
 var (
 	actionFlag = flag.String("action", "launch", "{launch, kill}")
+	retryFlag  = flag.Int("retry", 2, "Number of retries")
 )
 
 func main() {
@@ -25,11 +26,9 @@ func main() {
 }
 
 func launch() {
-	log.Println("Initialize connection to HDFS ...")
 	if e := file.Initialize(); e != nil {
 		log.Fatalf("file.Initalize() :%v", e)
 	}
-	log.Println("Done")
 
 	buildDir := file.LocalPrefix + path.Dir(os.Args[0])
 	log.Printf("Publish %s ...", buildDir)
@@ -44,7 +43,7 @@ func launch() {
 	}
 
 	if e := prism.Launch("localhost:8080", "file:/tmp", "hello", []string{},
-		"file:/tmp", 2); e != nil {
+		"file:/tmp", *retryFlag); e != nil {
 		log.Fatalf("Prism.Launch: %v", e)
 	}
 }
