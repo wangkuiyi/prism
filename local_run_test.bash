@@ -1,4 +1,5 @@
-if go install github.com/wangkuiyi/prism/prism \
+if go install -gcflags "-N -l" \
+    github.com/wangkuiyi/prism/prism \
     github.com/wangkuiyi/prism/example \
     github.com/wangkuiyi/prism/example/hello; then
     echo -e "\033[1mBuild Prism completed\033[0m"
