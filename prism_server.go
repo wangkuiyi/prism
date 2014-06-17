@@ -20,10 +20,6 @@ import (
 	"sync"
 )
 
-func init() {
-	log.SetPrefix("Prism ")
-}
-
 type Prism struct {
 	mutex     sync.Mutex
 	notifiers map[string]chan bool

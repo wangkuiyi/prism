@@ -15,6 +15,8 @@ import (
 )
 
 func main() {
+	log.SetPrefix("Prism ")
+
 	flag.Parse()
 	if e := file.Initialize(); e != nil {
 		log.Fatalf("file.Initalize() :%v", e)
