@@ -50,8 +50,8 @@ if [ "$R" != 'Hello, "/Hello"' ]; then
     exit
 fi
 
-echo -e "\033[1mKill again.\033[0m"
-$GOPATH/bin/example -action=kill
+echo -e "\033[1mKill Prism should bring down hello.\033[0m"
+killall prism
 sleep 1
 R=$(curl -s http://localhost:8080/Hello)
 if [ "$R" != '' ]; then

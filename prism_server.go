@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -282,4 +283,12 @@ func (p *Prism) Kill(addr string, _ *int) error {
 		}
 	}
 	return nil
+}
+
+func (p *Prism) KillAll() error {
+	e := parallel.RangeMap(p.notifiers, func(k, _ reflect.Value) error {
+		return p.Kill(k.String(), nil)
+	})
+	p.notifiers = make(map[string]chan bool) // Reset notifiers.
+	return e
 }

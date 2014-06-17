@@ -9,6 +9,9 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
@@ -26,5 +29,13 @@ func main() {
 		log.Fatalf("Cannot listen on %s: %v", addr, e)
 	}
 	log.Printf("Prism listening on %s", addr)
-	http.Serve(l, nil)
+	go http.Serve(l, nil)
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, os.Kill, syscall.SIGTERM)
+	<-sig
+	log.Print("Got signal to kill Prism")
+	if e := s.KillAll(); e != nil {
+		log.Print("KillAll: ", e)
+	}
 }
