@@ -16,14 +16,20 @@ import (
 	"path"
 	"runtime"
 	"strings"
+	"sync"
 )
 
+func init() {
+	log.SetPrefix("Prism ")
+}
+
 type Prism struct {
+	mutex     sync.Mutex
 	notifiers map[string]chan bool
 }
 
 func NewPrism() *Prism {
-	return &Prism{make(map[string]chan bool)}
+	return &Prism{notifiers: make(map[string]chan bool)}
 }
 
 // Program an deployment of RemotePath to LocalDir.  RemotePath must
@@ -169,9 +175,8 @@ func unzipLocal(name, dir string) error {
 }
 
 func (p *Prism) Launch(cmd *Cmd, _ *int) error {
-	if e := p.Kill(cmd.Addr, nil); e != nil {
-		log.Printf("Kill %s before launch failed: %v", cmd.Addr, e)
-	}
+	// We do not check return value since it is just a safe-to-do.
+	p.Kill(cmd.Addr, nil)
 
 	aggregateErrors := func(es ...error) error {
 		r := ""
@@ -191,47 +196,56 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 	os.Chmod(exe, 0774)
 
 	file.MkDir(cmd.LogDir)
-
 	logfile := path.Join(cmd.LogDir, cmd.Filename+"-"+cmd.Addr)
-	c := exec.Command(exe, cmd.Args...)
-	fout, e1 := file.Create(logfile + ".out")
-	ferr, e2 := file.Create(logfile + ".err")
-	cout, e3 := c.StdoutPipe()
-	cerr, e4 := c.StderrPipe()
-	if e := aggregateErrors(e1, e2, e3, e4); e != nil {
-		return e
-	}
-	go io.Copy(fout, cout)
-	go io.Copy(ferr, cerr)
 
-	log.Printf("Launch %s %v as %s", exe, cmd.Args, cmd.Addr)
-	go func(c *exec.Cmd, cmd Cmd) {
+	log.Printf("Prism launches %s %v on %s with retry=%d",
+		exe, cmd.Args, cmd.Addr, cmd.Retry)
+	go func(cmd Cmd) {
 		if _, exist := p.notifiers[cmd.Addr]; exist {
 			log.Printf("Cannot start %s, which is already started.", cmd.Addr)
 			return
 		} else {
+			p.mutex.Lock()
 			p.notifiers[cmd.Addr] = make(chan bool, 1)
+			p.mutex.Unlock()
+			defer func() {
+				p.mutex.Lock()
+				defer p.mutex.Unlock()
+				delete(p.notifiers, cmd.Addr)
+			}()
 		}
 
 		for i := 0; i < cmd.Retry; i++ {
 			select {
 			case <-p.notifiers[cmd.Addr]:
-				log.Printf("%v being killed intensionally.", cmd.Addr)
-				break
+				log.Printf("%v killed intensionally. No restart", cmd.Addr)
+				return
 			default:
 			}
 
+			c := exec.Command(exe, cmd.Args...)
+			fout, e1 := file.Create(logfile + ".out")
+			ferr, e2 := file.Create(logfile + ".err")
+			cout, e3 := c.StdoutPipe()
+			cerr, e4 := c.StderrPipe()
+			if e := aggregateErrors(e1, e2, e3, e4); e != nil {
+				log.Print("Prism failed open log files: %v", e)
+				return
+			}
+			defer fout.Close()
+			defer ferr.Close()
+			go io.Copy(fout, cout)
+			go io.Copy(ferr, cerr)
+
 			if e := c.Run(); e != nil {
-				log.Printf("Prims launches %s failed: %v", cmd.Addr, e)
+				log.Printf("Prism's launch %s stopped: %v", cmd.Addr, e)
 			} else {
-				log.Printf("%s successfully finished.", cmd.Addr)
+				log.Printf("Prism's launch %s completed.", cmd.Addr)
 				break
 			}
 		}
-
-		delete(p.notifiers, cmd.Addr)
 		log.Printf("No more restart of %s.", cmd.Addr)
-	}(c, *cmd)
+	}(*cmd)
 
 	return nil
 }
@@ -240,12 +254,14 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 func (p *Prism) Kill(addr string, _ *int) error {
 	// Close notifier channel to prevent Prism from restarting the
 	// process in case Retry > 1.
+	p.mutex.Lock()
 	notifier, exists := p.notifiers[addr]
 	if exists {
 		close(notifier)
 		// If !exists, the process might still exist if it was started
 		// by another starter.
 	}
+	p.mutex.Unlock()
 
 	f := strings.Split(addr, ":")
 	if runtime.GOOS == "linux" {

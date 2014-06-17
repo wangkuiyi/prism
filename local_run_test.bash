@@ -1,54 +1,62 @@
-go install github.com/wangkuiyi/prism/prism
-go install github.com/wangkuiyi/prism/example
-go install github.com/wangkuiyi/prism/example/hello
+if go install github.com/wangkuiyi/prism/prism \
+    github.com/wangkuiyi/prism/example \
+    github.com/wangkuiyi/prism/example/hello; then
+    echo -e "\033[1mBuild Prism completed\033[0m"
+else
+    echo -e "\033[1mBuild Prism failed\033[0m"
+    exit
+fi
 
 killall prism
 killall hello
 
 # Start Prism and listen on :12340
-$GOPATH/bin/prism -namenode=:50070&
+$GOPATH/bin/prism &
 
-SUC=0
-
-# Deploy and launch hello using Prism
+echo -e "\033[1mDeploy and launch hello using Prism.\033[0m"
 sleep 1
-$GOPATH/bin/example -namenode=:50070 -action=launch
+$GOPATH/bin/example -action=launch -retry=10
 sleep 1
 R=$(curl -s http://localhost:8080/Hello)
 if [ "$R" != 'Hello, "/Hello"' ]; then
-    echo "hello is not running as expected"
-    SUC=$(expr $SUC + 1)
+    echo -e "\033[1mhello is not running as expected!\033[0m"
+    exit
 fi
 
-# Kill hello
-$GOPATH/bin/example -namenode=:50070 -action=kill
-sleep 1
-R=$(curl -s http://localhost:8080/Hello)
-if [ "$R" != '' ]; then
-    echo "hello is not killed as expected"
-    SUC=$(expr $SUC + 1)
-fi
-
-# Deploy and launch again
-$GOPATH/bin/example -namenode=:50070 -action=launch
+echo -e "\033[1mKill hello using killall should lead to restart.\033[0m"
+killall hello
 sleep 1
 R=$(curl -s http://localhost:8080/Hello)
 if [ "$R" != 'Hello, "/Hello"' ]; then
-    echo "hello is not running as expected"
-    SUC=$(expr $SUC + 1)
+    echo -e "\033[1mhello is unexpectedly killed by killall!\033[0m"
+    exit
 fi
 
-# Kill again
-$GOPATH/bin/example -namenode=:50070 -action=kill
+echo -e "\033[1mKill hello should kill hello.\033[0m"
+$GOPATH/bin/example -action=kill
 sleep 1
 R=$(curl -s http://localhost:8080/Hello)
 if [ "$R" != '' ]; then
-    echo "hello is not killed as expected"
-    SUC=$(expr $SUC + 1)
+    echo -e "\033[1mhello is not killed as expected!\033[0m"
+    exit
 fi
 
-if [ "$SUC" == "0" ]; then
-    echo '========= Congratulations! Testing passed. ========='
-else
-    echo "========= " $SUC tests failed!. " ========="
+echo -e "\033[1mDeploy and launch again.\033[0m"
+$GOPATH/bin/example -action=launch -retry=2
+sleep 1
+R=$(curl -s http://localhost:8080/Hello)
+if [ "$R" != 'Hello, "/Hello"' ]; then
+    echo -e "\033[1mhello is not running as expected!\033[0m"
+    exit
 fi
+
+echo -e "\033[1mKill again.\033[0m"
+$GOPATH/bin/example -action=kill
+sleep 1
+R=$(curl -s http://localhost:8080/Hello)
+if [ "$R" != '' ]; then
+    echo -e "\033[1mhello is not killed as expected\033[0m"
+    exit
+fi
+
+echo -e "\033[1m========= Congratulations! Testing passed. =========\033[0m"
