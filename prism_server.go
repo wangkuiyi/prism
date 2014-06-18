@@ -2,6 +2,7 @@ package prism
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"crypto/md5"
 	"fmt"
@@ -259,15 +260,8 @@ func (p *Prism) Kill(addr string, _ *int) error {
 				f[1], e, o)
 		}
 	} else if runtime.GOOS == "darwin" {
-		o, e := exec.Command("lsof", "-i:"+f[1], "-t").CombinedOutput()
-		if e != nil {
-			return fmt.Errorf("lsof %s failed: %v, with output %s", f[1], e, o)
-		}
-		log.Printf("lsof returns %s", o) // debug
-		pid := strings.TrimSuffix(string(o), "\n")
-		o, e = exec.Command("kill", "-KILL", pid).CombinedOutput()
-		if e != nil {
-			return fmt.Errorf("kill %s failed: %v, with output %s", pid, e, o)
+		if e := findAndKillDarwinProcess(f[1]); e != nil {
+			return fmt.Errorf("Failed to kill %s: %v", f[1], e)
 		}
 	}
 	return nil
@@ -279,4 +273,34 @@ func KillAll(p *Prism) error {
 	})
 	p.notifiers = make(map[string]chan bool) // Reset notifiers.
 	return e
+}
+
+func findAndKillDarwinProcess(port string) error {
+	o, e := exec.Command("lsof", "-V", "-i:"+port).CombinedOutput()
+	if e != nil {
+		return fmt.Errorf("lsof -i%s failed: %v, with output %s", port, e, o)
+	}
+
+	s := bufio.NewScanner(bytes.NewReader(o))
+	pid := ""
+	for s.Scan() {
+		if strings.Contains(s.Text(), "LISTEN") {
+			if pid == "" {
+				pid = strings.Fields(s.Text())[1]
+			} else {
+				return fmt.Errorf("More than one LISTENing processes: %s", o)
+			}
+		}
+	}
+
+	if len(pid) == 0 {
+		return fmt.Errorf("Found no process: %s", o)
+	}
+
+	o, e = exec.Command("kill", "-KILL", pid).CombinedOutput()
+	if e != nil {
+		return fmt.Errorf("kill %s failed: %v, with output %s", pid, e, o)
+	}
+
+	return nil
 }
