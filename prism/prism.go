@@ -37,7 +37,7 @@ func main() {
 	signal.Notify(sig, os.Interrupt, os.Kill, syscall.SIGTERM)
 	<-sig
 	log.Print("Got signal to kill Prism")
-	if e := s.KillAll(); e != nil {
+	if e := prism.KillAll(s); e != nil {
 		log.Print("KillAll: ", e)
 	}
 }

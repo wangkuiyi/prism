@@ -273,7 +273,7 @@ func (p *Prism) Kill(addr string, _ *int) error {
 	return nil
 }
 
-func (p *Prism) KillAll() error {
+func KillAll(p *Prism) error {
 	e := parallel.RangeMap(p.notifiers, func(k, _ reflect.Value) error {
 		return p.Kill(k.String(), nil)
 	})
