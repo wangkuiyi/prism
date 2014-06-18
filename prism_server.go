@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/md5"
-	"errors"
 	"fmt"
 	"github.com/wangkuiyi/file"
 	"github.com/wangkuiyi/parallel"
@@ -175,19 +174,6 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 	// We do not check return value since it is just a safe-to-do.
 	p.Kill(cmd.Addr, nil)
 
-	aggregateErrors := func(es ...error) error {
-		r := ""
-		for _, e := range es {
-			if e != nil {
-				r += fmt.Sprintf("%v\n", e)
-			}
-		}
-		if r != "" {
-			return errors.New(r)
-		}
-		return nil
-	}
-
 	exe := path.Join(strings.TrimPrefix(cmd.LocalDir, file.LocalPrefix),
 		cmd.Filename)
 	os.Chmod(exe, 0774)
@@ -212,6 +198,15 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 			}()
 		}
 
+		fout, e1 := file.Create(logfile + ".out")
+		ferr, e2 := file.Create(logfile + ".err")
+		if e1 != nil || e2 != nil {
+			log.Print("Prism failed create log files: %v %v", e1, e2)
+			return
+		}
+		defer fout.Close()
+		defer ferr.Close()
+
 		for i := 0; i < cmd.Retry; i++ {
 			select {
 			case <-p.notifiers[cmd.Addr]:
@@ -221,16 +216,12 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 			}
 
 			c := exec.Command(exe, cmd.Args...)
-			fout, e1 := file.Create(logfile + ".out")
-			ferr, e2 := file.Create(logfile + ".err")
-			cout, e3 := c.StdoutPipe()
-			cerr, e4 := c.StderrPipe()
-			if e := aggregateErrors(e1, e2, e3, e4); e != nil {
-				log.Print("Prism failed open log files: %v", e)
+			cout, e1 := c.StdoutPipe()
+			cerr, e2 := c.StderrPipe()
+			if e1 != nil || e2 != nil {
+				log.Print("Prism failed retrieve cmd pipes: %v %v", e1, e2)
 				return
 			}
-			defer fout.Close()
-			defer ferr.Close()
 			go io.Copy(fout, cout)
 			go io.Copy(ferr, cerr)
 
