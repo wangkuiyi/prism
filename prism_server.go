@@ -263,6 +263,7 @@ func (p *Prism) Kill(addr string, _ *int) error {
 		if e != nil {
 			return fmt.Errorf("lsof %s failed: %v, with output %s", f[1], e, o)
 		}
+		log.Printf("lsof returns %s", o) // debug
 		pid := strings.TrimSuffix(string(o), "\n")
 		o, e = exec.Command("kill", "-KILL", pid).CombinedOutput()
 		if e != nil {
