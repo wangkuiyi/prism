@@ -2,9 +2,9 @@ package prism
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"crypto/md5"
-	"errors"
 	"fmt"
 	"github.com/wangkuiyi/file"
 	"github.com/wangkuiyi/parallel"
@@ -14,14 +14,11 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
 )
-
-func init() {
-	log.SetPrefix("Prism ")
-}
 
 type Prism struct {
 	mutex     sync.Mutex
@@ -178,19 +175,6 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 	// We do not check return value since it is just a safe-to-do.
 	p.Kill(cmd.Addr, nil)
 
-	aggregateErrors := func(es ...error) error {
-		r := ""
-		for _, e := range es {
-			if e != nil {
-				r += fmt.Sprintf("%v\n", e)
-			}
-		}
-		if r != "" {
-			return errors.New(r)
-		}
-		return nil
-	}
-
 	exe := path.Join(strings.TrimPrefix(cmd.LocalDir, file.LocalPrefix),
 		cmd.Filename)
 	os.Chmod(exe, 0774)
@@ -215,6 +199,15 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 			}()
 		}
 
+		fout, e1 := file.Create(logfile + ".out")
+		ferr, e2 := file.Create(logfile + ".err")
+		if e1 != nil || e2 != nil {
+			log.Print("Prism failed create log files: %v %v", e1, e2)
+			return
+		}
+		defer fout.Close()
+		defer ferr.Close()
+
 		for i := 0; i < cmd.Retry; i++ {
 			select {
 			case <-p.notifiers[cmd.Addr]:
@@ -224,16 +217,12 @@ func (p *Prism) Launch(cmd *Cmd, _ *int) error {
 			}
 
 			c := exec.Command(exe, cmd.Args...)
-			fout, e1 := file.Create(logfile + ".out")
-			ferr, e2 := file.Create(logfile + ".err")
-			cout, e3 := c.StdoutPipe()
-			cerr, e4 := c.StderrPipe()
-			if e := aggregateErrors(e1, e2, e3, e4); e != nil {
-				log.Print("Prism failed open log files: %v", e)
+			cout, e1 := c.StdoutPipe()
+			cerr, e2 := c.StderrPipe()
+			if e1 != nil || e2 != nil {
+				log.Print("Prism failed retrieve cmd pipes: %v %v", e1, e2)
 				return
 			}
-			defer fout.Close()
-			defer ferr.Close()
 			go io.Copy(fout, cout)
 			go io.Copy(ferr, cerr)
 
@@ -271,15 +260,47 @@ func (p *Prism) Kill(addr string, _ *int) error {
 				f[1], e, o)
 		}
 	} else if runtime.GOOS == "darwin" {
-		o, e := exec.Command("lsof", "-i:"+f[1], "-t").CombinedOutput()
-		if e != nil {
-			return fmt.Errorf("lsof %s failed: %v, with output %s", f[1], e, o)
-		}
-		pid := strings.TrimSuffix(string(o), "\n")
-		o, e = exec.Command("kill", "-KILL", pid).CombinedOutput()
-		if e != nil {
-			return fmt.Errorf("kill %s failed: %v, with output %s", pid, e, o)
+		if e := findAndKillDarwinProcess(f[1]); e != nil {
+			return fmt.Errorf("Failed to kill %s: %v", f[1], e)
 		}
 	}
+	return nil
+}
+
+func KillAll(p *Prism) error {
+	e := parallel.RangeMap(p.notifiers, func(k, _ reflect.Value) error {
+		return p.Kill(k.String(), nil)
+	})
+	p.notifiers = make(map[string]chan bool) // Reset notifiers.
+	return e
+}
+
+func findAndKillDarwinProcess(port string) error {
+	o, e := exec.Command("lsof", "-V", "-i:"+port).CombinedOutput()
+	if e != nil {
+		return fmt.Errorf("lsof -i%s failed: %v, with output %s", port, e, o)
+	}
+
+	s := bufio.NewScanner(bytes.NewReader(o))
+	pid := ""
+	for s.Scan() {
+		if strings.Contains(s.Text(), "LISTEN") {
+			if pid == "" {
+				pid = strings.Fields(s.Text())[1]
+			} else {
+				return fmt.Errorf("More than one LISTENing processes: %s", o)
+			}
+		}
+	}
+
+	if len(pid) == 0 {
+		return fmt.Errorf("Found no process: %s", o)
+	}
+
+	o, e = exec.Command("kill", "-KILL", pid).CombinedOutput()
+	if e != nil {
+		return fmt.Errorf("kill %s failed: %v, with output %s", pid, e, o)
+	}
+
 	return nil
 }
