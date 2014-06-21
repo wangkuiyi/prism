@@ -18,7 +18,6 @@ in-memory filesystem, and local filesystem.
 Prism consists of a client package and a server program.  The way they
 work with application programs is illustrated as follow:
 
-
                          applicaton
                          server process 1
                           ^
